@@ -9,7 +9,6 @@ fi
 arg_new=0
 arg_packages=0
 arg_venv=0
-arg_frp=0
 arg_sensors=0
 arg_processor=0
 
@@ -20,8 +19,6 @@ for arg in "$@"; do
         arg_packages=1
     elif [[ "$arg" == "--venv" ]]; then
         arg_venv=1
-    elif [[ "$arg" == "--frp" ]]; then
-        arg_frp=1
     elif [[ "$arg" == "--sensors" ]]; then
         arg_sensors=1
     elif [[ "$arg" == "--processor" ]]; then
@@ -43,7 +40,6 @@ source .env
 #
 if [[ $arg_new -eq 1 ]]; then
     mkdir -p $PAROS_DATA_LOCATION
-    mkdir -p $PAROS_FRP_LOCATION
 fi
 
 #
@@ -60,55 +56,6 @@ if [[ $arg_new -eq 1 ]] || [[ $arg_venv -eq 1 ]]; then
     python3 -m venv $PAROS_VENV_LOCATION
     source $PAROS_VENV_LOCATION/bin/activate
     pip install -r requirements.txt
-fi
-
-#
-# FRPC
-#
-if [[ $arg_new -eq 1 ]] || [[ $arg_frp -eq 1 ]]; then
-    FRP_DOWNLOAD="https://github.com/fatedier/frp/releases/download/v0.52.3/frp_0.52.3_linux_arm64.tar.gz"
-    wget -nv $FRP_DOWNLOAD -O /tmp/frp.tar.gz
-    tar -xf /tmp/frp.tar.gz -C /tmp
-    sudo cp /tmp/frp*/frpc /usr/local/bin/
-    sudo chmod +x /usr/local/bin/frpc
-    rm -rf /tmp/frp*
-
-    cat > $PAROS_FRP_LOCATION/run.toml << EOF
-serverAddr = "$PAROS_FRP_HOST"
-serverPort = $PAROS_FRP_PORT
-auth.token = "$PAROS_FRP_TOKEN"
-[[proxies]]
-name = "${THIS_HOSTNAME}_ssh"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 22
-remotePort = $((10000 + $PAROS_FRP_OFFSET))
-[[proxies]]
-name = "${THIS_HOSTNAME}_prometheus"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 9100
-remotePort = $((11000 + $PAROS_FRP_OFFSET))
-EOF
-
-    sudo tee /etc/systemd/system/frpc.service > /dev/null << EOF
-[Unit]
-Description=FRPC Daemon
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-ExecStart=frpc --config=$PAROS_FRP_LOCATION/run.toml
-Restart=always
-RestartSec=10
-User=pi
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable frpc.service
 fi
 
 #
