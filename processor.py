@@ -1,3 +1,5 @@
+from collections import defaultdict
+import glob
 import influxdb_client
 import pathlib
 from dotenv import load_dotenv
@@ -15,6 +17,8 @@ class parosProcessor:
     POINTER_PATH = 'pointer.pickle'
     MAXIMUM_UPLOAD_SIZE = 600  # Maximum # of lines/datapoints for each upload
     LOOP_PERIOD = 1  # Loop timing control period
+    FILE_CLEANUP_PERIOD = 10 # Run file cleanup every N files uploaded
+    UPLOADED_FILE_BUFFER = 2
 
     def __init__(self, data_loc, influx_host, influx_org, influx_bucket, influx_token):
         #
@@ -55,6 +59,10 @@ class parosProcessor:
             if cur_pointer is None:
                 logging.info(f"Adding new sensor {sensor} to pointer file")
                 self.setPointer(sensor, file_hour, 0)
+
+        # Track how many cycles we've run with a file cleanup
+        self.cleanup_counters = defaultdict(int)
+
 
     def getPointer(self, sensor_id = None):
         if os.path.isfile(self.POINTER_PATH) and os.path.getsize(self.POINTER_PATH) > 0:
@@ -166,11 +174,25 @@ class parosProcessor:
             if self.__getHourOnlyUTCNow() > cur_pointer_time:
                 # Verify that the sensors aren't time traveling before
                 # switching to the new file
+                os.rename(cur_path, os.path.join(cur_sensor_dir, "U_" + cur_file)) # Rename the old file to mark it as uploaded
                 cur_pointer_time += datetime.timedelta(hours=1)
                 cur_file = cur_pointer_time.strftime('%Y-%m-%d-%H')
                 cur_offset = 0
-
                 self.setPointer(sensor, cur_file, cur_offset)
+                self.cleanup_counters[sensor]+=1
+
+                # Cleaup files - delete oldest uploaded files until we're under the cap of files to save
+                if self.cleanup_counters[sensor] >= self.FILE_CLEANUP_PERIOD:
+                    uploaded_files = glob.glob(cur_sensor_dir + "/U_*")
+                    uploaded_files.sort()
+                    n = len(uploaded_files)
+                    while n > self.UPLOADED_FILE_BUFFER:
+                        file_to_del = uploaded_files.pop()
+                        if os.path.exists(file_to_del):
+                            os.remove(file_to_del)
+                            logging.debug(f"Deleted {file_to_del}")
+                    self.cleanup_counters[sensor] = 0
+
 
         # Returns the number of lines uploaded to influxdb
         return num_lines
