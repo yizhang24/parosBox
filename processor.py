@@ -174,7 +174,8 @@ class parosProcessor:
             if self.__getHourOnlyUTCNow() > cur_pointer_time:
                 # Verify that the sensors aren't time traveling before
                 # switching to the new file
-                os.rename(cur_path, os.path.join(cur_sensor_dir, "U_" + cur_file)) # Rename the old file to mark it as uploaded
+                if(os.path.exists(cur_path)):
+                    os.rename(cur_path, os.path.join(cur_sensor_dir, "U_" + cur_file)) # Rename the old file to mark it as uploaded
                 cur_pointer_time += datetime.timedelta(hours=1)
                 cur_file = cur_pointer_time.strftime('%Y-%m-%d-%H')
                 cur_offset = 0
