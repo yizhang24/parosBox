@@ -99,7 +99,7 @@ class parosProcessor:
             # Do not allow a single block of more than the number of lines
             # specified in self.MAXIMUM_UPLOAD_SIZE
             while line_counter <= self.MAXIMUM_UPLOAD_SIZE:
-                lp_str = f.readline()
+                lp_str = f.readline().rstrip(b'\x00')
                 if not lp_str:
                     # Arrived at the end of the file
                     break
